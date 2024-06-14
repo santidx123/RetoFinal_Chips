@@ -1,0 +1,240 @@
+/*
+ * ProyectoFinal.c
+ *
+ * Created: 05/06/2024 02:31:39 p. m.
+ * Author: AlexDX
+ */
+
+#asm
+        .equ __lcd_port=0x0B
+        .equ __lcd_EN=3
+        .equ __lcd_RS=2
+        .equ __lcd_D4=4
+        .equ __lcd_D5=5
+        .equ __lcd_D6=6
+        .equ __lcd_D7=7
+       #endasm
+
+#include <mega328p.h>
+#include <delay.h>
+#include <display.h>
+#include <stdio.h>
+#include <stdint.h>
+
+// Definir los pines si no están definidos
+#ifndef PB0
+    #define PB0 0
+#endif
+
+#ifndef PB1
+    #define PB1 1
+#endif
+
+#ifndef PB2
+    #define PB2 2
+#endif
+
+#ifndef PB6
+    #define PB6 6
+#endif
+
+#ifndef PB7
+    #define PB7 7
+#endif
+
+#ifndef PC0
+    #define PC0 0
+#endif
+
+#ifndef PC1
+    #define PC1 1
+#endif
+
+#ifndef PC2
+    #define PC2 2
+#endif
+
+#ifndef PC3
+    #define PC3 3
+#endif
+
+#ifndef PC4
+    #define PC4 4
+#endif
+
+#ifndef PC5
+    #define PC5 5
+#endif
+
+#ifndef PD0
+    #define PD0 0
+#endif
+
+#ifndef PD1
+    #define PD1 1
+#endif
+
+// Función para inicializar los puertos
+void init_ports(void) {
+    // Configurar PB0, PB1 y PB2 como entradas (botones)
+    DDRB &= ~(1 << PB0);
+    DDRB &= ~(1 << PB1);
+    DDRB &= ~(1 << PB2);
+    // Habilitar los pull-up internos en PB0, PB1 y PB2
+    PORTB |= (1 << PB0);
+    PORTB |= (1 << PB1);
+    PORTB |= (1 << PB2);
+
+    // Configurar PC0 y PC1 como entradas (botones)
+    DDRC &= ~(1 << PC0);
+    DDRC &= ~(1 << PC1);
+    // Habilitar los pull-up internos en PC0 y PC1
+    PORTC |= (1 << PC0);
+    PORTC |= (1 << PC1);
+
+    // Configurar PC2, PC3, PC4 y PC5 como salidas (LEDs)
+    DDRC |= (1 << PC2);
+    DDRC |= (1 << PC3);
+    DDRC |= (1 << PC4);
+    DDRC |= (1 << PC5);
+    
+    // Configurar PD0 y PD1 como salidas (motor)
+    DDRD |= (1 << PD0);
+    DDRD |= (1 << PD1);
+    // Asegurarse de que el motor esté apagado inicialmente
+    PORTD &= ~(1 << PD0);
+    PORTD &= ~(1 << PD1);
+
+    // Configurar PB6 y PB7 como salidas (LED y Enable)
+    DDRB |= (1 << PB6);
+    DDRB |= (1 << PB7);
+    // Asegurarse de que el LED y el Enable estén apagados inicialmente
+    PORTB &= ~(1 << PB6);
+    PORTB &= ~(1 << PB7);
+}
+
+// Variable para el contador
+unsigned int cont = 0;
+char Cadena[17];
+
+// Función para controlar los LEDs cuando el motor va hacia adelante
+void control_leds_forward() {
+    // Encender PC2 y PC5 por 2 segundos
+    PORTC |= (1 << PC2);
+    PORTC |= (1 << PC5);
+    delay_ms(100);
+    PORTC &= ~(1 << PC2);
+    PORTC &= ~(1 << PC5);
+
+    // Encender PC3 y PC4 por 2 segundos
+    PORTC |= (1 << PC3);
+    PORTC |= (1 << PC4);
+    delay_ms(100);
+    PORTC &= ~(1 << PC3);
+    PORTC &= ~(1 << PC4);
+}
+
+// Función para controlar los LEDs cuando el motor va hacia atrás
+void control_leds_backward() {
+    // Encender PC3 y PC4 por 2 segundos
+    PORTC |= (1 << PC3);
+    PORTC |= (1 << PC4);
+    delay_ms(100);
+    PORTC &= ~(1 << PC3);
+    PORTC &= ~(1 << PC4);
+
+    // Encender PC2 y PC5 por 2 segundos
+    PORTC |= (1 << PC2);
+    PORTC |= (1 << PC5);
+    delay_ms(100);
+    PORTC &= ~(1 << PC2);
+    PORTC &= ~(1 << PC5);
+}
+
+// Función principal
+void main() {
+    // Inicializar los puertos
+    init_ports();
+    
+    // Inicializar la pantalla LCD
+    SetupLCD();
+    MoveCursor(3,0);
+    StringLCD("Produccion");
+    sprintf(Cadena, "%04d", cont);
+    MoveCursor(6,1);  // Mover el cursor a la segunda línea
+    StringLCDVar(Cadena);
+
+    while (1) {
+        // Leer el estado de los botones
+        unsigned int button0 = !(PINB & (1 << PB0));
+        unsigned int button1 = !(PINB & (1 << PB1));
+        unsigned int button2 = !(PINB & (1 << PB2));
+        unsigned int buttonCount = (PINC & (1 << PC0));
+        unsigned int buttonStop = ! (PINC & (1 << PC1));
+
+        if (buttonStop) {
+            // Si el botón PC1 está presionado, apagar el motor y encender el LED en PB6
+            PORTD &= ~(1 << PD0);
+            PORTD &= ~(1 << PD1);
+            PORTB &= ~(1 << PB7); // Desactivar el Enable
+            PORTB |= (1 << PB6);  // Encender el LED
+        } else {
+            // Apagar el LED en PB6 cuando el botón no está presionado
+            PORTB &= ~(1 << PB6);
+
+            if (button2) {
+                // Si el botón PB2 está presionado, apagar el motor y resetear el contador
+                PORTD &= ~(1 << PD0);
+                PORTD &= ~(1 << PD1);
+                PORTB &= ~(1 << PB7); // Desactivar el Enable
+                cont = 0;  // Resetear el contador
+                // Mostrar el contador reseteado en el formato "0000" en la pantalla LCD
+                sprintf(Cadena, "%04d", cont);
+                MoveCursor(6,1);  // Mover el cursor a la segunda línea
+                StringLCDVar(Cadena);
+            } else if (button0 && button1) {
+                // Si ambos botones PB0 y PB1 están presionados, apagar el motor
+                PORTD &= ~(1 << PD0);
+                PORTD &= ~(1 << PD1);
+                PORTB &= ~(1 << PB7); // Desactivar el Enable
+            } else if (button0) {
+                // Si solo el botón PB0 está presionado, girar el motor en una dirección
+                PORTD |= (1 << PD0);
+                PORTD &= ~(1 << PD1);
+                PORTB |= (1 << PB7); // Activar el Enable
+
+                // Controlar los LEDs en secuencia para adelante
+                control_leds_forward();
+            } else if (button1) {
+                // Si solo el botón PB1 está presionado, girar el motor en la otra dirección
+                PORTD |= (1 << PD1);
+                PORTD &= ~(1 << PD0);
+                PORTB |= (1 << PB7); // Activar el Enable
+
+                // Controlar los LEDs en secuencia para atrás
+                control_leds_backward();
+            } else {
+                // Si no se presiona ningún botón, apagar el motor
+                PORTD &= ~(1 << PD0);
+                PORTD &= ~(1 << PD1);
+                PORTB &= ~(1 << PB7); // Desactivar el Enable
+            }
+        }
+
+        if (buttonCount) {
+            // Si el botón PC0 está presionado, incrementar el contador
+            cont++;
+            delay_ms(200);
+            
+            // Mostrar el contador en el formato "0000" en la pantalla LCD
+            MoveCursor(6,1);  // Mover el cursor a la segunda línea
+            sprintf(Cadena, "%04d", cont);
+            StringLCDVar(Cadena);
+            
+            // Esperar para evitar múltiples incrementos
+            delay_ms(200);
+        }
+    }
+}
+
+
